@@ -3,7 +3,7 @@
 Study how architectural choices in Deep Image Prior (DIP) affect recovery of missing regions in synthetic grayscale images.
 
 ## Status
-Initial scaffold: synthetic data, masks, simple fill baselines, and metrics are included. The DIP model builder, training harness, original DIP vase sanity check, and full model smoke-test report remain to be integrated and validated.
+Scaffold now includes the configurable DIP hourglass ablation models, masked training loop, held-out-MSE checkpoint selection, and a CLI experiment runner. The original DIP vase sanity check, frequency-domain analysis, and full experimental run remain to be integrated and validated. Tests have been added but should be run locally before interpreting results.
 
 ## Experiment setup
 - Image size: 64 × 64, grayscale.
@@ -32,6 +32,8 @@ Initial scaffold: synthetic data, masks, simple fill baselines, and metrics are 
 - src/synthetic_data.py: synthetic image generation.
 - src/masks.py: central gap and held-out mask generation.
 - src/metrics.py: masked metrics.
+- src/models.py: eight configurable hourglass architecture ablations.
+- src/training.py: masked optimization and held-out checkpoint selection.
 - baselines/fill.py: grey and harmonic fill baselines.
 - experiments/: configuration and runners.
 - tests/: lightweight checks.
@@ -47,7 +49,17 @@ Python 3.10+ recommended.
     python -m pytest
     python experiments/run_smoke_test.py
 
-The smoke test currently validates data, masks, and fill baselines. It is not yet the full 8-network × 3-image DIP smoke test.
+The smoke test validates data, masks, and fill baselines. Model/training unit tests are in tests/test_models.py and tests/test_training.py.
+
+Run a short single-model experiment first:
+
+    python experiments/run_experiment.py --image-type gradient --ablation-id 1 --steps 10 --channels 8 --device cpu
+
+Run all configured image types/scales and all eight ablations (this can take substantial time):
+
+    python experiments/run_experiment.py
+
+Each run writes metrics.csv, the best prediction and model state, plus periodic prediction arrays under outputs/.
 
 ## Reproducibility
 - Keep random seeds explicit and save the configuration with experiment outputs.
