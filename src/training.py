@@ -31,7 +31,6 @@ def train_inpainting(
     steps: int = 3000,
     learning_rate: float = 0.01,
     log_every: int = 50,
-    noise_channels: int = 32,
     noise_scale: float = 0.1,
     seed: int = 0,
     device: str | torch.device | None = None,
@@ -97,13 +96,17 @@ def train_inpainting(
         model.eval()
         with torch.no_grad():
             pred = model(fixed_noise)[0, 0].detach().cpu().numpy().astype(np.float32)
+        gap_mse = masked_mse(pred, target, gap)
+        ys, xs = np.where(gap)
+        y0, y1 = int(ys.min()), int(ys.max()) + 1
+        x0, x1 = int(xs.min()), int(xs.max()) + 1
         row = {
             "step": float(step),
             "train_mse": masked_mse(pred, target, train_mask),
             "heldout_mse": masked_mse(pred, target, heldout),
-            "gap_mse": masked_mse(pred, target, gap),
-            "psnr": psnr(pred, target),
-            "ssim": ssim(pred, target),
+            "gap_mse": gap_mse,
+            "psnr": float("inf") if gap_mse == 0 else float(10.0 * np.log10(1.0 / gap_mse)),
+            "ssim": ssim(pred[y0:y1, x0:x1], target[y0:y1, x0:x1]),
         }
         history.append(row)
         if row["heldout_mse"] < best_mse:
