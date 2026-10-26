@@ -16,6 +16,13 @@ Scaffold now includes the configurable DIP hourglass ablation models, masked tra
 - Baselines: grey fill, harmonic fill, fully connected network.
 - Sanity check: reproduce the original DIP inpainting/vase notebook separately. Coordinate inputs are for this sanity check only, not the main experiment.
 
+## Implementation notes
+
+- All variants use average pooling in the encoder and have no encoder-to-decoder skip connections.
+- In this implementation, `upsampling: on` means bilinear interpolation in the decoder; `off` replaces it with learned 2× transposed convolutions. This is the operational definition used by the runner and should be confirmed against the intended experimental definition before reporting results.
+- Weight sharing reuses one encoder block across encoder scales and one separate decoder block across decoder scales; encoder and decoder do not share the same block.
+- The model input is fixed random noise with the number of channels set by the model configuration. The output uses a sigmoid to constrain predictions to [0, 1].
+
 ## Ablation matrix
 | ID | Upsampling | Filter size | Weight sharing |
 |---|---|---|---|
