@@ -1,0 +1,44 @@
+seed: 0
+
+data:
+  size: 64
+  image_types: [gradient, blurred_noise, stripes]
+  blur_scales: [0, 1, 2, 4, 8]
+  noise_base: 0.5
+  noise_amplitude: 0.1
+  stripe_angle_degrees: 30
+  stripe_period: 8
+
+mask:
+  gap_size: 16
+  heldout_fraction: 0.05
+  heldout_seed: 0
+
+training:
+  levels: 4
+  channels: 32
+  fixed_noise_scale: 0.1
+  input_jitter: false
+  skip_connections: false
+  upsampling: bilinear
+  downsampling: average_pool
+  optimizer: Adam
+  learning_rate: 0.01
+  steps: 3000
+  log_every: 50
+
+evaluation:
+  checkpoint_selection: heldout_mse
+  metrics: [heldout_mse, gap_mse, psnr, ssim]
+  save_frequency_summaries: true
+  save_image_snapshots: true
+
+ablations:
+  - {id: 1, upsampling: true, filter_size: 3, weight_sharing: true}
+  - {id: 2, upsampling: true, filter_size: 3, weight_sharing: false}
+  - {id: 3, upsampling: true, filter_size: 1, weight_sharing: true}
+  - {id: 4, upsampling: true, filter_size: 1, weight_sharing: false}
+  - {id: 5, upsampling: false, filter_size: 3, weight_sharing: true}
+  - {id: 6, upsampling: false, filter_size: 3, weight_sharing: false}
+  - {id: 7, upsampling: false, filter_size: 1, weight_sharing: true}
+  - {id: 8, upsampling: false, filter_size: 1, weight_sharing: false}
