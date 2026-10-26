@@ -8,9 +8,9 @@ from src.training import train_inpainting
 
 
 def test_training_uses_heldout_selection_and_returns_finite_prediction(tmp_path):
-    size = 16
+    size = 32
     image = np.tile(np.linspace(0, 1, size, dtype=np.float32), (size, 1))
-    gap = central_gap_mask(size, 4)
+    gap = central_gap_mask(size, 8)
     heldout = heldout_mask(gap, fraction=0.1, seed=0)
     model = build_model(channels=4, levels=2, filter_size=1)
     result = train_inpainting(
