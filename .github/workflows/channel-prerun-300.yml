@@ -81,6 +81,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: channel-prerun-300-${{ matrix.channels }}
-          path: /tmp/dip-prerun/channels-${{ matrix.channels }}
+          path: /tmp/dip-prerun-300/channels-${{ matrix.channels }}
           if-no-files-found: warn
           retention-days: 14
