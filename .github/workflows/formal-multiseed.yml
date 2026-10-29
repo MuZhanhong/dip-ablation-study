@@ -1,0 +1,175 @@
+name: Formal multi-seed Ablation 6 channel comparison
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/formal-multiseed.yml"
+      - "experiments/run_experiment.py"
+      - "src/**"
+      - "experiments/config.yaml"
+      - "requirements.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    name: Ablation 6 / ${{ matrix.channels }} channels / seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        channels: [8, 16]
+        seed: [0, 1, 2, 3, 4]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run fixed-protocol 3000-step experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="/tmp/dip-formal/channels-${{ matrix.channels }}/seed-${{ matrix.seed }}"
+          mkdir -p "$out"
+          /usr/bin/time -v -o "$out/resource_usage.txt" \
+            python experiments/run_experiment.py \
+              --image-type gradient \
+              --ablation-id 6 \
+              --steps 3000 \
+              --channels "${{ matrix.channels }}" \
+              --seed "${{ matrix.seed }}" \
+              --device cpu \
+              --output-dir "$out/output" 2>&1 | tee "$out/training.log"
+          run_dir="$out/output/gradient/ablation_6"
+          test -s "$run_dir/metrics.csv"
+          test -s "$run_dir/best_prediction.npy"
+          test -s "$run_dir/best_model_state.pt"
+          python - "$run_dir/metrics.csv" "$out/summary.txt" "${{ matrix.channels }}" "${{ matrix.seed }}" <<'PY'
+          import csv, math, sys
+          from pathlib import Path
+          metrics, output = Path(sys.argv[1]), Path(sys.argv[2])
+          channels, seed = sys.argv[3:]
+          with metrics.open(newline="", encoding="utf-8") as f:
+              rows = list(csv.DictReader(f))
+          if not rows:
+              raise SystemExit("metrics.csv has no rows")
+          for row in rows:
+              for key in ("train_mse", "heldout_mse", "gap_mse", "psnr", "ssim"):
+                  if not math.isfinite(float(row[key])):
+                      raise SystemExit(f"Non-finite {key} at step {row['step']}")
+          best = min(rows, key=lambda r: float(r["heldout_mse"]))
+          last = rows[-1]
+          output.write_text(
+              f"channels={channels}\nseed={seed}\nsteps=3000\n"
+              f"logged_checkpoints={len(rows)}\n"
+              f"best_step={best['step']}\n"
+              f"best_heldout_mse={best['heldout_mse']}\n"
+              f"last_train_mse={last['train_mse']}\n"
+              f"last_heldout_mse={last['heldout_mse']}\n"
+              f"last_gap_mse={last['gap_mse']}\n",
+              encoding="utf-8")
+          print(output.read_text())
+          PY
+      - name: Upload raw metrics, predictions, checkpoint, logs, and resource report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-ablation6-ch${{ matrix.channels }}-seed${{ matrix.seed }}
+          path: /tmp/dip-formal/channels-${{ matrix.channels }}/seed-${{ matrix.seed }}
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    name: Aggregate multi-seed metrics
+    needs: train
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Download all run artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: formal-ablation6-ch*
+          path: artifacts
+      - name: Aggregate seed-level results
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, statistics
+          from pathlib import Path
+
+          root = Path("artifacts")
+          rows = []
+          for summary in sorted(root.glob("formal-ablation6-ch*/**/summary.txt")):
+              values = {}
+              for line in summary.read_text(encoding="utf-8").splitlines():
+                  key, value = line.split("=", 1)
+                  values[key] = value
+              metrics_path = summary.parent / "output/gradient/ablation_6/metrics.csv"
+              with metrics_path.open(newline="", encoding="utf-8") as f:
+                  checkpoints = list(csv.DictReader(f))
+              best = min(checkpoints, key=lambda r: float(r["heldout_mse"]))
+              last = checkpoints[-1]
+              rows.append({
+                  "channels": int(values["channels"]),
+                  "seed": int(values["seed"]),
+                  "steps": int(values["steps"]),
+                  "best_step": int(float(best["step"])),
+                  "best_heldout_mse": float(best["heldout_mse"]),
+                  "last_train_mse": float(last["train_mse"]),
+                  "last_heldout_mse": float(last["heldout_mse"]),
+                  "last_gap_mse": float(last["gap_mse"]),
+              })
+          if len(rows) != 10:
+              raise SystemExit(f"Expected 10 completed seed/channel runs; found {len(rows)}")
+          out = Path("formal_results")
+          out.mkdir(exist_ok=True)
+          fields = list(rows[0])
+          with (out / "seed_level_metrics.csv").open("w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(f, fieldnames=fields)
+              writer.writeheader()
+              writer.writerows(sorted(rows, key=lambda r: (r["channels"], r["seed"])))
+          with (out / "aggregate_summary.csv").open("w", newline="", encoding="utf-8") as f:
+              fields = ["channels", "n_seeds", "best_heldout_mse_mean", "best_heldout_mse_sd",
+                        "last_heldout_mse_mean", "last_heldout_mse_sd", "best_step_mean"]
+              writer = csv.DictWriter(f, fieldnames=fields)
+              writer.writeheader()
+              for channels in (8, 16):
+                  group = [r for r in rows if r["channels"] == channels]
+                  if len(group) != 5:
+                      raise SystemExit(f"Expected 5 seeds for {channels} channels")
+                  best = [r["best_heldout_mse"] for r in group]
+                  last = [r["last_heldout_mse"] for r in group]
+                  writer.writerow({
+                      "channels": channels,
+                      "n_seeds": len(group),
+                      "best_heldout_mse_mean": statistics.mean(best),
+                      "best_heldout_mse_sd": statistics.stdev(best),
+                      "last_heldout_mse_mean": statistics.mean(last),
+                      "last_heldout_mse_sd": statistics.stdev(last),
+                      "best_step_mean": statistics.mean(r["best_step"] for r in group),
+                  })
+          print((out / "aggregate_summary.csv").read_text())
+          PY
+      - name: Upload aggregated tables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-ablation6-aggregate
+          path: formal_results/
+          if-no-files-found: warn
+          retention-days: 90
