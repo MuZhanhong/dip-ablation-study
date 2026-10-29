@@ -1,0 +1,86 @@
+name: 300-step channel-width pre-run (8 and 16)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  channel-prerun:
+    name: Ablation 6 / ${{ matrix.channels }} channels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        channels: [8, 16]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run 300-step CPU pre-run and measure peak memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="/tmp/dip-prerun-300/channels-${{ matrix.channels }}"
+          mkdir -p "$out"
+          /usr/bin/time -v -o "$out/resource_usage.txt" \
+            python experiments/run_experiment.py \
+              --image-type gradient \
+              --ablation-id 6 \
+              --steps 300 \
+              --channels "${{ matrix.channels }}" \
+              --device cpu \
+              --output-dir "$out/output" 2>&1 | tee "$out/training.log"
+          run_dir="$out/output/gradient/ablation_6"
+          test -s "$run_dir/metrics.csv"
+          test -s "$run_dir/best_prediction.npy"
+          test -s "$run_dir/best_model_state.pt"
+          python - "$run_dir/metrics.csv" "$out/summary.txt" <<'PY'
+          import csv
+          import math
+          import sys
+          from pathlib import Path
+
+          metrics_path, summary_path = map(Path, sys.argv[1:])
+          with metrics_path.open(newline="", encoding="utf-8") as f:
+              rows = list(csv.DictReader(f))
+          if not rows:
+              raise SystemExit("metrics.csv has no data rows")
+          for row in rows:
+              for key in ("train_mse", "heldout_mse", "gap_mse", "ssim"):
+                  value = float(row[key])
+                  if not math.isfinite(value):
+                      raise SystemExit(f"Non-finite {key} at step {row['step']}: {value}")
+          best = min(rows, key=lambda row: float(row["heldout_mse"]))
+          last = rows[-1]
+          summary_path.write_text(
+              "steps_logged=" + str(len(rows)) + "\n"
+              + "best_step=" + best["step"] + "\n"
+              + "best_heldout_mse=" + best["heldout_mse"] + "\n"
+              + "last_train_mse=" + last["train_mse"] + "\n"
+              + "last_heldout_mse=" + last["heldout_mse"] + "\n"
+              + "last_gap_mse=" + last["gap_mse"] + "\n",
+              encoding="utf-8",
+          )
+          print(summary_path.read_text())
+          PY
+      - name: Upload metrics, predictions, checkpoints, and memory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: channel-prerun-300-${{ matrix.channels }}
+          path: /tmp/dip-prerun/channels-${{ matrix.channels }}
+          if-no-files-found: warn
+          retention-days: 14
