@@ -28,6 +28,7 @@ def main() -> None:
     parser.add_argument("--ablation-id", type=int, choices=range(1, 9))
     parser.add_argument("--steps", type=int, help="Override configured training steps")
     parser.add_argument("--channels", type=int, help="Override configured channel width")
+    parser.add_argument("--seed", type=int, help="Override model initialization and fixed-noise seed; image and masks remain fixed")
     parser.add_argument("--output-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--device", default=None, help="For example cpu or cuda")
     args = parser.parse_args()
@@ -41,6 +42,7 @@ def main() -> None:
     size = int(data_cfg["size"])
     channels = int(args.channels or train_cfg["channels"])
     steps = int(args.steps or train_cfg["steps"])
+    run_seed = int(config["seed"] if args.seed is None else args.seed)
 
     image_specs: list[tuple[str, float | None]] = []
     if args.image_type:
@@ -74,8 +76,8 @@ def main() -> None:
                 ablation_id, channels=channels, levels=int(train_cfg["levels"])
             )
             # Re-seed initialization for reproducible, comparable runs.
-            torch.manual_seed(int(config["seed"]))
-            np.random.seed(int(config["seed"]))
+            torch.manual_seed(run_seed)
+            np.random.seed(run_seed)
             model = DIPHourglass(model_config)
             run_dir = root_out / spec_name / f"ablation_{ablation_id}"
             result = train_inpainting(
@@ -84,7 +86,7 @@ def main() -> None:
                 learning_rate=float(train_cfg["learning_rate"]),
                 log_every=int(train_cfg["log_every"]),
                 noise_scale=float(train_cfg["fixed_noise_scale"]),
-                seed=int(config["seed"]),
+                seed=run_seed,
                 device=args.device,
                 output_dir=run_dir,
             )
