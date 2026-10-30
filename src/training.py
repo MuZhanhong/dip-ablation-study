@@ -164,7 +164,4 @@ def train_inpainting(
         selected_step=selected_step,
     )
 
-        best_step=best_step,
-        best_heldout_mse=best_mse,
-        history=history,
-    )
+  
