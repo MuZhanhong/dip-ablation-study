@@ -1,14 +1,9 @@
 name: Formal multi-seed Ablation 6 channel comparison
 
+# Manual only: experiment runs should not start on every push.
+# Note: this compares channel widths by held-out MSE on Ablation 6, which is
+# unshared, so held-out MSE does not track anything there. Rework before rerunning.
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/formal-multiseed.yml"
-      - "experiments/run_experiment.py"
-      - "src/**"
-      - "experiments/config.yaml"
-      - "requirements.txt"
   workflow_dispatch:
 
 permissions:
