@@ -31,9 +31,15 @@ def test_shared_model_has_fewer_parameters_than_unshared_model():
     )
 
 
-def test_unshared_model_uses_locally_connected_internal_layers():
+def test_unshared_model_is_locally_connected_throughout():
     model = build_model(channels=4, levels=2, weight_sharing=False)
-    assert any(isinstance(layer, LocallyConnected2d) for layer in model.modules())
+    assert not any(isinstance(layer, nn.Conv2d) for layer in model.modules())
+    assert isinstance(model.network[-2], LocallyConnected2d)
+    assert model.network[-2].k == 1
+
+
+def test_shared_model_has_shared_output_layer():
+    model = build_model(channels=4, levels=2, weight_sharing=True)
     assert isinstance(model.network[-2], nn.Conv2d)
     assert model.network[-2].kernel_size == (1, 1)
 
@@ -63,3 +69,4 @@ def test_model_supports_backward_pass():
     loss = model(x).mean()
     loss.backward()
     assert all(p.grad is not None for p in model.parameters() if p.requires_grad)
+
