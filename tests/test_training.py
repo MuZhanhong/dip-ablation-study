@@ -27,6 +27,34 @@ def test_training_uses_heldout_selection_and_returns_finite_prediction(tmp_path)
     assert (tmp_path / "best_prediction.npy").exists()
 
 
+def test_final_selection_returns_last_step(tmp_path):
+    size = 32
+    image = np.tile(np.linspace(0, 1, size, dtype=np.float32), (size, 1))
+    gap = central_gap_mask(size, 8)
+    heldout = heldout_mask(gap, fraction=0.1, seed=0)
+    torch.manual_seed(1)
+    model = build_model(channels=4, levels=2, filter_size=1, size=size, weight_sharing=False)
+    result = train_inpainting(
+        image, gap, heldout, model,
+        steps=4, log_every=2, seed=1,
+        device="cpu", output_dir=tmp_path, selection="final",
+    )
+    assert result.selection == "final"
+    assert result.selected_step == result.final_step == 4
+    assert np.array_equal(result.selected_prediction, result.final_prediction)
+    assert (tmp_path / "final_prediction.npy").exists()
+    assert (tmp_path / "selected_prediction.npy").exists()
+
+
+def test_unknown_selection_is_rejected():
+    image = np.zeros((8, 8), dtype=np.float32)
+    gap = central_gap_mask(8, 2)
+    heldout = heldout_mask(gap, fraction=0.2, seed=0)
+    model = build_model(channels=2, levels=1, size=8)
+    with pytest.raises(ValueError, match="selection"):
+        train_inpainting(image, gap, heldout, model, steps=1, log_every=1, selection="gap")
+
+
 def test_training_rejects_overlapping_masks():
     image = np.zeros((8, 8), dtype=np.float32)
     gap = np.zeros((8, 8), dtype=bool)
