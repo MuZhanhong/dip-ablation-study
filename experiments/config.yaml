@@ -45,4 +45,4 @@ ablations:
   - {id: 6, upsampling: false, filter_size: 3, weight_sharing: false}
   - {id: 7, upsampling: false, filter_size: 1, weight_sharing: true}
   - {id: 8, upsampling: false, filter_size: 1, weight_sharing: false}
-}
+
