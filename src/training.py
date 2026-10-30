@@ -14,12 +14,17 @@ from src.metrics import masked_mse, psnr, ssim
 
 @dataclass
 class TrainingResult:
-    """Best-held-out checkpoint and per-checkpoint metric history."""
+    """Best-held-out, final and selected checkpoints, plus per-checkpoint metric history."""
 
     best_prediction: np.ndarray
     best_step: int
     best_heldout_mse: float
     history: list[dict[str, float]]
+    final_prediction: np.ndarray
+    final_step: int
+    selection: str
+    selected_prediction: np.ndarray
+    selected_step: int
 
 
 def train_inpainting(
@@ -35,13 +40,21 @@ def train_inpainting(
     seed: int = 0,
     device: str | torch.device | None = None,
     output_dir: str | Path | None = None,
+    selection: str = "heldout",
 ) -> TrainingResult:
-    """Fit model to visible non-held-out pixels and select by held-out MSE.
+    """Fit model to visible non-held-out pixels and select a checkpoint.
 
     The target image is used for training only where both masks are False.
     Held-out and gap pixels are excluded from the loss. Gap metrics are
     reported for analysis but never used to select a checkpoint.
+
+    selection="heldout" picks the checkpoint with the lowest held-out MSE.
+    selection="final" picks the last step. Use "final" for unshared networks:
+    their held-out pixels, like their gap, get no error about their own
+    content, so held-out MSE does not track anything there.
     """
+    if selection not in ("heldout", "final"):
+        raise ValueError("selection must be 'heldout' or 'final'")
     target = np.asarray(image, dtype=np.float32)
     gap = np.asarray(gap_mask, dtype=bool)
     heldout = np.asarray(heldout_mask, dtype=bool)
@@ -93,7 +106,8 @@ def train_inpainting(
         if step % log_every != 0 and step != steps:
             continue
 
-        model.eval()
+        # Stay in train mode, as in the original DIP: eval mode would switch batch
+        # norm to running averages, which differ from the statistics being fitted.
         with torch.no_grad():
             pred = model(fixed_noise)[0, 0].detach().cpu().numpy().astype(np.float32)
         gap_mse = masked_mse(pred, target, gap)
@@ -122,7 +136,16 @@ def train_inpainting(
     if best_prediction is None:
         raise RuntimeError("Training ended without producing a checkpoint")
 
+    final_prediction = pred.copy()
+    if selection == "heldout":
+        selected_step, selected_prediction = best_step, best_prediction
+    else:
+        selected_step, selected_prediction = step, final_prediction
+
     if out_path is not None:
+        np.save(out_path / "final_prediction.npy", final_prediction)
+        torch.save(model.state_dict(), out_path / "final_model_state.pt")
+        np.save(out_path / "selected_prediction.npy", selected_prediction)
         fields = ["step", "train_mse", "heldout_mse", "gap_mse", "psnr", "ssim"]
         with (out_path / "metrics.csv").open("w", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=fields)
@@ -131,6 +154,16 @@ def train_inpainting(
 
     return TrainingResult(
         best_prediction=best_prediction,
+        best_step=best_step,
+        best_heldout_mse=best_mse,
+        history=history,
+        final_prediction=final_prediction,
+        final_step=step,
+        selection=selection,
+        selected_prediction=selected_prediction,
+        selected_step=selected_step,
+    )
+
         best_step=best_step,
         best_heldout_mse=best_mse,
         history=history,
