@@ -39,6 +39,7 @@ def main() -> None:
     data_cfg = config["data"]
     mask_cfg = config["mask"]
     train_cfg = config["training"]
+    eval_cfg = config["evaluation"]
     size = int(data_cfg["size"])
     channels = int(args.channels or train_cfg["channels"])
     steps = int(args.steps or train_cfg["steps"])
@@ -80,6 +81,10 @@ def main() -> None:
             np.random.seed(run_seed)
             model = DIPHourglass(model_config)
             run_dir = root_out / spec_name / f"ablation_{ablation_id}"
+            selection = eval_cfg[
+                "checkpoint_selection_shared" if model_config.weight_sharing
+                else "checkpoint_selection_unshared"
+            ]
             result = train_inpainting(
                 image, gap, validation, model,
                 steps=steps,
@@ -89,11 +94,13 @@ def main() -> None:
                 seed=run_seed,
                 device=args.device,
                 output_dir=run_dir,
+                selection=selection,
             )
+            selected = next(r for r in result.history if int(r["step"]) == result.selected_step)
             print(
                 f"{spec_name} | ablation {ablation_id} | "
-                f"best step={result.best_step} | "
-                f"heldout MSE={result.best_heldout_mse:.6g} | "
+                f"selection={result.selection} | step={result.selected_step} | "
+                f"gap MSE={selected['gap_mse']:.6g} | "
                 f"saved={run_dir}"
             )
 
