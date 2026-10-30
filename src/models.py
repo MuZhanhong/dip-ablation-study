@@ -6,7 +6,8 @@ The three switches follow the Experiments Week 2 design:
 - filter_size: use 3x3 or 1x1 filters for the main convolution layers.
 - weight_sharing=True: normal convolutions share filters across spatial positions;
   False uses locally connected layers with separate filters at each pixel.
-The final 1x1 output convolution is always a normal spatially shared Conv2d.
+The final 1x1 output layer follows the weight_sharing switch like every other
+layer, so the unshared networks are unshared throughout.
 """
 from __future__ import annotations
 
@@ -116,7 +117,7 @@ def build_net(
         layers += unit(C, C, 1, spatial_size)
         return nn.Sequential(*layers)
 
-    return nn.Sequential(level(0, in_ch, size), nn.Conv2d(C, out_ch, 1), nn.Sigmoid())
+    return nn.Sequential(level(0, in_ch, size), conv(C, out_ch, 1, size), nn.Sigmoid())
 
 
 class DIPHourglass(nn.Module):
@@ -199,3 +200,4 @@ def ablation_config(ablation_id: int, *, channels: int = 32, levels: int = 4) ->
         upsampling=upsampling,
         weight_sharing=weight_sharing,
     )
+
