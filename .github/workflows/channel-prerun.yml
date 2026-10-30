@@ -1,8 +1,7 @@
 name: Channel-width pre-run (8 and 16)
 
+# Manual only: experiment runs should not start on every push.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -84,3 +83,4 @@ jobs:
           path: /tmp/dip-prerun/channels-${{ matrix.channels }}
           if-no-files-found: warn
           retention-days: 14
+
