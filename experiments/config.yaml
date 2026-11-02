@@ -16,7 +16,7 @@ mask:
 
 training:
   levels: 4
-  channels: 32
+  channels: 16
   fixed_noise_scale: 0.1
   input_jitter: false
   skip_connections: false
@@ -24,7 +24,7 @@ training:
   downsampling: average_pool
   optimizer: Adam
   learning_rate: 0.01
-  steps: 3000
+  steps: 2000
   log_every: 50
 
 evaluation:
