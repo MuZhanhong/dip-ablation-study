@@ -1,8 +1,7 @@
-name: Formal multi-seed Ablation 6 channel comparison
+name: Legacy Ablation 6 channel diagnostic (final-step scoring)
 
-# Manual only: experiment runs should not start on every push.
-# Note: this compares channel widths by held-out MSE on Ablation 6, which is
-# unshared, so held-out MSE does not track anything there. Rework before rerunning.
+# Manual only. This is a diagnostic comparison, not the main ablation sweep.
+# Ablation 6 is unshared: held-out MSE cannot select a checkpoint.
 on:
   workflow_dispatch:
 
@@ -32,7 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run fixed-protocol 3000-step experiment
+      - name: Run fixed-protocol 3000-step diagnostic
         shell: bash
         run: |
           set -euo pipefail
@@ -64,16 +63,15 @@ jobs:
               for key in ("train_mse", "heldout_mse", "gap_mse", "psnr", "ssim"):
                   if not math.isfinite(float(row[key])):
                       raise SystemExit(f"Non-finite {key} at step {row['step']}")
-          best = min(rows, key=lambda r: float(r["heldout_mse"]))
-          last = rows[-1]
+          final = rows[-1]
           output.write_text(
               f"channels={channels}\nseed={seed}\nsteps=3000\n"
-              f"logged_checkpoints={len(rows)}\n"
-              f"best_step={best['step']}\n"
-              f"best_heldout_mse={best['heldout_mse']}\n"
-              f"last_train_mse={last['train_mse']}\n"
-              f"last_heldout_mse={last['heldout_mse']}\n"
-              f"last_gap_mse={last['gap_mse']}\n",
+              f"selection=final\nfinal_step={final['step']}\n"
+              f"final_train_mse={final['train_mse']}\n"
+              f"final_heldout_mse={final['heldout_mse']}\n"
+              f"final_gap_mse={final['gap_mse']}\n"
+              f"final_psnr={final['psnr']}\n"
+              f"final_ssim={final['ssim']}\n",
               encoding="utf-8")
           print(output.read_text())
           PY
@@ -87,7 +85,7 @@ jobs:
           retention-days: 90
 
   aggregate:
-    name: Aggregate multi-seed metrics
+    name: Aggregate final-step diagnostic metrics
     needs: train
     if: always()
     runs-on: ubuntu-24.04
@@ -99,7 +97,7 @@ jobs:
         with:
           pattern: formal-ablation6-ch*
           path: artifacts
-      - name: Aggregate seed-level results
+      - name: Aggregate seed-level final-step results
         shell: bash
         run: |
           set -euo pipefail
@@ -117,17 +115,17 @@ jobs:
               metrics_path = summary.parent / "output/gradient/ablation_6/metrics.csv"
               with metrics_path.open(newline="", encoding="utf-8") as f:
                   checkpoints = list(csv.DictReader(f))
-              best = min(checkpoints, key=lambda r: float(r["heldout_mse"]))
-              last = checkpoints[-1]
+              final = checkpoints[-1]
               rows.append({
                   "channels": int(values["channels"]),
                   "seed": int(values["seed"]),
                   "steps": int(values["steps"]),
-                  "best_step": int(float(best["step"])),
-                  "best_heldout_mse": float(best["heldout_mse"]),
-                  "last_train_mse": float(last["train_mse"]),
-                  "last_heldout_mse": float(last["heldout_mse"]),
-                  "last_gap_mse": float(last["gap_mse"]),
+                  "final_step": int(float(final["step"])),
+                  "final_train_mse": float(final["train_mse"]),
+                  "final_heldout_mse": float(final["heldout_mse"]),
+                  "final_gap_mse": float(final["gap_mse"]),
+                  "final_psnr": float(final["psnr"]),
+                  "final_ssim": float(final["ssim"]),
               })
           if len(rows) != 10:
               raise SystemExit(f"Expected 10 completed seed/channel runs; found {len(rows)}")
@@ -139,32 +137,30 @@ jobs:
               writer.writeheader()
               writer.writerows(sorted(rows, key=lambda r: (r["channels"], r["seed"])))
           with (out / "aggregate_summary.csv").open("w", newline="", encoding="utf-8") as f:
-              fields = ["channels", "n_seeds", "best_heldout_mse_mean", "best_heldout_mse_sd",
-                        "last_heldout_mse_mean", "last_heldout_mse_sd", "best_step_mean"]
+              fields = ["channels", "n_seeds", "final_gap_mse_mean", "final_gap_mse_sd",
+                        "final_train_mse_mean", "final_train_mse_sd",
+                        "final_heldout_mse_mean", "final_heldout_mse_sd",
+                        "final_psnr_mean", "final_psnr_sd", "final_ssim_mean", "final_ssim_sd"]
               writer = csv.DictWriter(f, fieldnames=fields)
               writer.writeheader()
               for channels in (8, 16):
                   group = [r for r in rows if r["channels"] == channels]
                   if len(group) != 5:
                       raise SystemExit(f"Expected 5 seeds for {channels} channels")
-                  best = [r["best_heldout_mse"] for r in group]
-                  last = [r["last_heldout_mse"] for r in group]
-                  writer.writerow({
-                      "channels": channels,
-                      "n_seeds": len(group),
-                      "best_heldout_mse_mean": statistics.mean(best),
-                      "best_heldout_mse_sd": statistics.stdev(best),
-                      "last_heldout_mse_mean": statistics.mean(last),
-                      "last_heldout_mse_sd": statistics.stdev(last),
-                      "best_step_mean": statistics.mean(r["best_step"] for r in group),
-                  })
+                  row = {"channels": channels, "n_seeds": len(group)}
+                  for metric in ("final_gap_mse", "final_train_mse", "final_heldout_mse",
+                                 "final_psnr", "final_ssim"):
+                      values = [r[metric] for r in group]
+                      row[f"{metric}_mean"] = statistics.mean(values)
+                      row[f"{metric}_sd"] = statistics.stdev(values)
+                  writer.writerow(row)
           print((out / "aggregate_summary.csv").read_text())
           PY
       - name: Upload aggregated tables
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: formal-ablation6-aggregate
+          name: formal-ablation6-final-step-aggregate
           path: formal_results/
           if-no-files-found: warn
           retention-days: 90
