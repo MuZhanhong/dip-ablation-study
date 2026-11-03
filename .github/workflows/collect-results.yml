@@ -1,0 +1,46 @@
+name: Collect sweep results (no model weights)
+
+# Manual only. Downloads the artifacts of the given sweep runs on GitHub's side,
+# drops the model checkpoints (*.pt), and uploads everything else as one small zip.
+on:
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: "Sweep run IDs, separated by spaces"
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download, strip checkpoints, gather
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          for run in ${{ inputs.run_ids }}; do
+            gh api --paginate "repos/${{ github.repository }}/actions/runs/$run/artifacts" \
+              --jq '.artifacts[] | "\(.id) \(.name)"' |
+            while read -r aid name; do
+              gh api "repos/${{ github.repository }}/actions/artifacts/$aid/zip" > a.zip
+              mkdir -p "results/$name"
+              unzip -q a.zip -x '*.pt' -d "results/$name"
+              rm a.zip
+            done
+          done
+          echo "runs collected: $(ls results | wc -l)"
+          du -sh results
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-results-no-weights
+          path: results
+          if-no-files-found: error
+          retention-days: 90
