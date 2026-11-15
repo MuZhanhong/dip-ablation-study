@@ -1,0 +1,94 @@
+name: Blurred noise image-seed generalization (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      steps:
+        description: "Training steps per run (recommended 4000 after pilot)"
+        required: true
+        default: "4000"
+        type: choice
+        options: ["2000", "3000", "4000", "6000"]
+      image_seeds:
+        description: "Comma-separated image seeds; default tests 1,2,3"
+        required: true
+        default: "1,2,3"
+        type: string
+      model_seeds:
+        description: "Comma-separated initialization seeds"
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  generalization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      PYTHONHASHSEED: "0"
+      STEPS: ${{ inputs.steps }}
+      IMAGE_SEEDS: ${{ inputs.image_seeds }}
+      MODEL_SEEDS: ${{ inputs.model_seeds }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies and record environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          mkdir -p outputs/generalization
+          python -m pip freeze > outputs/generalization/pip-freeze.txt
+          python - <<'PY' > outputs/generalization/environment.txt
+          import platform, sys, numpy, torch
+          print("python:", sys.version)
+          print("platform:", platform.platform())
+          print("numpy:", numpy.__version__)
+          print("torch:", torch.__version__)
+          print("cuda:", torch.cuda.is_available())
+          PY
+          git rev-parse HEAD > outputs/generalization/commit.txt
+      - name: Train independent target images on GitHub-hosted CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra image_seeds <<< "$IMAGE_SEEDS"
+          IFS=',' read -ra model_seeds <<< "$MODEL_SEEDS"
+          for image_seed in "${image_seeds[@]}"; do
+            for model_seed in "${model_seeds[@]}"; do
+              for ablation in 1 3 5 6 8; do
+                echo "image_seed=$image_seed model_seed=$model_seed ablation=$ablation steps=$STEPS"
+                python experiments/run_experiment.py \
+                  --image-type blurred_noise --blur-scale 4 \
+                  --ablation-id "$ablation" --channels 16 \
+                  --steps "$STEPS" --image-seed "$image_seed" \
+                  --seed "$model_seed" --device cpu \
+                  --output-dir "outputs/generalization/model_seed_$model_seed"
+              done
+            done
+          done
+      - name: Upload metrics and selected predictions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blurred-noise-generalization-${{ github.run_id }}
+          path: |
+            outputs/generalization/**/metrics.csv
+            outputs/generalization/**/selected_prediction.npy
+            outputs/generalization/**/final_prediction.npy
+            outputs/generalization/pip-freeze.txt
+            outputs/generalization/environment.txt
+            outputs/generalization/commit.txt
+          if-no-files-found: warn
+          retention-days: 90
