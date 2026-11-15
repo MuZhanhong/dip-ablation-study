@@ -29,6 +29,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, help="Override configured training steps")
     parser.add_argument("--channels", type=int, help="Override configured channel width")
     parser.add_argument("--seed", type=int, help="Override model initialization and fixed-noise seed; image and masks remain fixed")
+    parser.add_argument("--image-seed", type=int, help="Override synthetic image generation seed independently of model seed")
     parser.add_argument("--output-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--device", default=None, help="For example cpu or cuda")
     args = parser.parse_args()
@@ -44,6 +45,7 @@ def main() -> None:
     channels = int(args.channels or train_cfg["channels"])
     steps = int(args.steps or train_cfg["steps"])
     run_seed = int(config["seed"] if args.seed is None else args.seed)
+    image_seed = int(config["seed"] if args.image_seed is None else args.image_seed)
 
     image_specs: list[tuple[str, float | None]] = []
     if args.image_type:
@@ -68,10 +70,12 @@ def main() -> None:
 
     for kind, scale in image_specs:
         image = make_image(
-            kind, size=size, seed=int(config["seed"]),
+            kind, size=size, seed=image_seed,
             blur_scale=1.0 if scale is None else scale,
         )
         spec_name = kind if scale is None else f"{kind}_scale_{scale:g}"
+        if args.image_seed is not None:
+            spec_name = f"{spec_name}_image_seed_{image_seed}"
         for ablation_id in ablation_ids:
             model_config = ablation_config(
                 ablation_id, channels=channels, levels=int(train_cfg["levels"])
