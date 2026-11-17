@@ -4,18 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       steps:
-        description: "Training steps per run (recommended 4000 after pilot)"
+        description: "Steps per run"
         required: true
         default: "4000"
         type: choice
         options: ["2000", "3000", "4000", "6000"]
       image_seeds:
-        description: "Comma-separated image seeds; default tests 1,2,3"
+        description: "Image seeds, separated by commas"
         required: true
         default: "1,2,3"
         type: string
       model_seeds:
-        description: "Comma-separated initialization seeds"
+        description: "Model seeds, separated by commas"
         required: true
         default: "0"
         type: string
