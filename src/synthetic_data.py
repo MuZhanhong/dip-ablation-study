@@ -1,11 +1,11 @@
-"""Deterministic synthetic grayscale image generators."""
+"""Synthetic images for the inpainting experiments."""
 from __future__ import annotations
 
 import numpy as np
 
 
 def gradient_image(size: int = 64) -> np.ndarray:
-    """Return a horizontal gradient from 0 to 1, shape (size, size)."""
+    """Horizontal gradient, from 0 to 1."""
     row = np.linspace(0.0, 1.0, size, dtype=np.float32)
     return np.tile(row[None, :], (size, 1))
 
@@ -17,11 +17,7 @@ def blurred_noise_image(
     base: float = 0.5,
     amplitude: float = 0.1,
 ) -> np.ndarray:
-    """Return periodic Gaussian-smoothed noise around the base value.
-
-    The FFT Gaussian filter uses periodic boundaries. There is no per-image
-    min-max normalization.
-    """
+    """Blur noise with a periodic FFT filter, then scale its standard deviation."""
     rng = np.random.default_rng(seed)
     noise = rng.standard_normal((size, size)).astype(np.float32)
     if blur_scale > 0:
@@ -40,7 +36,7 @@ def stripe_image(
     angle_degrees: float = 30.0,
     period: float = 8.0,
 ) -> np.ndarray:
-    """Return diagonal sinusoidal stripes with values in [0, 1]."""
+    """Diagonal sine-wave stripes."""
     yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
     theta = np.deg2rad(angle_degrees)
     phase = xx * np.cos(theta) + yy * np.sin(theta)
@@ -50,7 +46,7 @@ def stripe_image(
 def make_image(
     kind: str, *, size: int = 64, seed: int = 0, blur_scale: float = 1.0
 ) -> np.ndarray:
-    """Dispatch to one of the supported synthetic image families."""
+    """Create an image by name."""
     if kind == "gradient":
         return gradient_image(size)
     if kind == "blurred_noise":
