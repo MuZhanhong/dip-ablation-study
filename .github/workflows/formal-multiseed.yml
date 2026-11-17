@@ -1,7 +1,6 @@
 name: Legacy Ablation 6 channel diagnostic (final-step scoring)
 
-# Manual only. This is a diagnostic comparison, not the main ablation sweep.
-# Ablation 6 is unshared: held-out MSE cannot select a checkpoint.
+# Older width diagnostic. Ablation 6 is evaluated at the final step.
 on:
   workflow_dispatch:
 
