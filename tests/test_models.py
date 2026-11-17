@@ -49,8 +49,10 @@ def test_upsampling_off_keeps_every_layer_at_full_resolution(ablation_id):
     model = DIPHourglass(ablation_config(ablation_id, channels=4, levels=4))
     x = torch.randn(1, 4, 64, 64)
     assert model(x).shape == (1, 1, 64, 64)
-    assert not any(isinstance(layer, (nn.AvgPool2d, nn.Upsample, nn.ConvTranspose2d))
-                   for layer in model.modules())
+    assert not any(
+        isinstance(layer, (nn.AvgPool2d, nn.Upsample, nn.ConvTranspose2d))
+        for layer in model.modules()
+    )
 
 
 def test_filter_size_is_validated():
