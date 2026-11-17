@@ -1,144 +1,203 @@
-# Deep Image Prior Architecture Ablation Study
+# Deep Image Prior: Architecture Ablation Study
 
-Study how architectural choices in Deep Image Prior (DIP) affect recovery of missing regions in synthetic grayscale images.
+This project looks at how much of an image a neural network can reconstruct from its architecture alone. We use **Deep Image Prior (DIP)**-style networks to fill a missing square in small synthetic images, without pretraining on an image dataset.
 
-## Current status
+The main question is which architectural choices help information from the visible part of an image reach the missing region. We vary spatial weight sharing, convolution kernel size, and pooling/upsampling, then compare the reconstructions against simple interpolation baselines.
 
-The repository implements the eight-network ablation matrix, masked training, metrics, prediction snapshots, and tests. The current design follows Design v3. The 120-run main sweep has completed; follow-up image-seed generalization experiments are underway. See `results/comprehensive-target-aligned-report.md` for the analysis.
+## Where the project stands
 
-## Experiment setup
+The main sweep is complete: **8 architectures × 3 image families × 5 model seeds = 120 runs**, using 16 channels and 2,000 optimization steps per run. We have also started testing whether the blurred-noise findings carry over to independently generated images.
 
-- Image size: 64 × 64, grayscale.
-- Image families: horizontal gradient; periodic Gaussian-blurred noise at scales ℓ ∈ {0, 1, 2, 4, 8}; diagonal sinusoidal stripes (30° orientation, period 8).
-- Missing region: centred 16 × 16 square.
-- Held-out validation: 5% of visible pixels, sampled with seed 0 and never inside the missing square.
-- Model: four-level DIP-style stack, batch normalization and LeakyReLU(0.2), fixed random-noise input scaled by 0.1, no skip connections, no input jitter, Adam at learning rate 0.01.
-- Ablation factors: pooling/upsampling on or off; 3 × 3 vs 1 × 1 main filters; spatially shared vs locally connected internal convolution weights.
-- Channel width and training steps are experiment-level settings and must be fixed consistently for a sweep. The main sweep used 16 channels and 2,000 steps.
-- Baselines: grey fill and harmonic fill.
+- [Full reconstruction analysis](results/comprehensive-target-aligned-report.md)
+- [Development notes and next steps](PROGRESS.md)
+- [GitHub Actions runs](../../actions)
 
-## Exact switch definitions
+The results below refer to the completed main sweep. They should not be taken as results from the image-generalization follow-up.
 
-- **Upsampling on:** use average-pool downsampling and bilinear upsampling in the hourglass.
-- **Upsampling off:** remove both pooling and upsampling. Keep all layers operating at 64 × 64.
-- **Filter size 1 × 1:** replace the main 3 × 3 convolution layers with 1 × 1 convolutions; layers already 1 × 1 remain unchanged.
-- **Weight sharing on:** use normal convolutions, sharing each filter spatially across pixel positions.
-- **Weight sharing off:** use locally connected internal convolution layers with separate weights at every spatial position.
-- **Final output layer:** it follows the weight-sharing switch. Shared networks use a spatially shared 1 × 1 convolution; unshared networks use a locally connected output layer. Do not force a shared output layer onto the unshared variants.
+## What we test
 
-## Evaluation and checkpoint selection
+Each image is 64 × 64 pixels, with a 16 × 16 square removed from its centre. Another 5% of the visible pixels are held out for validation. The network receives a fixed random-noise tensor as input and is fitted to the remaining visible pixels. The missing region is never included in the training loss.
 
-- **Shared networks:** select the checkpoint with the lowest held-out MSE.
-- **Unshared networks:** score the final training step. A held-out pixel receives no location-specific training signal in an unshared network, just as a gap pixel does, so held-out MSE cannot provide a meaningful early-stopping signal.
-- Report gap MSE as the primary reconstruction score, alongside held-out MSE, PSNR, SSIM, optimization trajectories, and prediction snapshots as appropriate. Gap MSE is an evaluation metric, not a checkpoint-selection criterion.
-- Generate predictions in training mode, consistent with the current implementation and pilot protocol.
-- Do not interpret held-out MSE for unshared networks as evidence that their gap reconstruction is improving or failing; inspect final-step gap metrics and predictions instead.
+We use three image families:
 
-## Ablation matrix
+| Image | Description | What it tests |
+|---|---|---|
+| Gradient | Smooth horizontal change from black to white | Simple global structure |
+| Blurred noise | Gaussian-smoothed random noise, with several blur scales | Spatial structure at different scales |
+| Stripes | Sinusoidal stripes at 30°, period 8 | Continuation of a repeating pattern |
 
-| ID | Pooling + upsampling | Filter size | Spatial weight sharing |
+The formal comparison uses blurred noise at scale 4. Other blur scales are available in the configuration.
+
+### Network variants
+
+All eight networks use four levels, batch normalization, LeakyReLU, and a sigmoid output. There are no skip connections or input jitter. The three switches are:
+
+- **Pooling/upsampling:** an average-pooling encoder and bilinear-upsampling decoder, or neither (all layers remain at full resolution).
+- **Kernel size:** 3 × 3 or 1 × 1 in the main convolution layers.
+- **Spatial weight sharing:** ordinary convolutions, or locally connected layers with separate weights at each spatial position.
+
+| Network | Pooling/upsampling | Main kernel | Spatial sharing |
 |---|---|---|---|
-| 1 | on | 3 × 3 | on |
-| 2 | on | 3 × 3 | off |
-| 3 | on | 1 × 1 | on |
-| 4 | on | 1 × 1 | off |
-| 5 | off (all layers at 64 × 64) | 3 × 3 | on |
-| 6 | off (all layers at 64 × 64) | 3 × 3 | off |
-| 7 | off (all layers at 64 × 64) | 1 × 1 | on |
-| 8 | off (all layers at 64 × 64) | 1 × 1 | off |
+| N1 | On | 3 × 3 | Shared |
+| N2 | On | 3 × 3 | Unshared |
+| N3 | On | 1 × 1 | Shared |
+| N4 | On | 1 × 1 | Unshared |
+| N5 | Off | 3 × 3 | Shared |
+| N6 | Off | 3 × 3 | Unshared |
+| N7 | Off | 1 × 1 | Shared |
+| N8 | Off | 1 × 1 | Unshared |
 
-## Layout
+The final 1 × 1 output layer also follows the sharing switch. In particular, the unshared networks do **not** end with a shared convolution.
 
-- `src/synthetic_data.py`: synthetic image generation.
-- `src/masks.py`: central gap and held-out mask generation.
-- `src/metrics.py`: masked metrics.
-- `src/models.py`: eight configurable architecture ablations.
-- `src/training.py`: masked optimization, checkpoint selection, and prediction saving.
-- `baselines/fill.py`: grey and harmonic fill baselines.
-- `experiments/`: configuration and runners.
-- `.github/workflows/`: manual experiment workflows and automated tests.
-- `tests/`: lightweight checks.
+### Training and evaluation
 
-## Quick start
+The main sweep uses Adam with learning rate 0.01, a fixed noise input scaled by 0.1, and 2,000 steps. Metrics are recorded every 50 steps.
 
-Python 3.11 is used in the GitHub Actions runs.
+Checkpoint selection differs for a reason:
 
-```bash
+- **Shared networks (N1, N3, N5, N7):** select the checkpoint with the lowest held-out MSE.
+- **Unshared networks (N2, N4, N6, N8):** use the final training step. Their held-out locations do not receive a location-specific training signal, so held-out error is not a reliable stopping criterion.
+
+Gap MSE is calculated against the known target after training, not used to choose a checkpoint. Predictions are evaluated in training mode so batch normalization uses the same kind of statistics as during fitting.
+
+## Main results
+
+The table shows mean **gap MSE across five model seeds** for the three images used in the main sweep. Lower is better.
+
+| Network | Gradient | Blurred noise (scale 4) | Stripes |
+|---|---:|---:|---:|
+| N1 | 0.000020 | 0.001071 | 0.047837 |
+| N2 | 0.007282 | 0.058402 | 0.126526 |
+| N3 | 0.000121 | 0.002235 | 0.103635 |
+| N4 | 0.006951 | 0.046572 | 0.127021 |
+| N5 | 0.001223 | 0.003515 | 0.061705 |
+| N6 | 0.007186 | 0.046970 | 0.126218 |
+| N7 | 0.033802 | 0.011050 | 0.166538 |
+| N8 | 0.008296 | 0.021645 | 0.125977 |
+| Constant grey (0.5) | 0.005354 | 0.010777 | 0.125000 |
+| Harmonic fill | 0.000000 | 0.001072 | 0.119586 |
+
+A few findings stand out:
+
+1. **Weight sharing matters.** N1, N3, and N5 generally reconstruct the missing structure much better than their unshared counterparts.
+2. **Low MSE does not necessarily mean the pattern was recovered.** On blurred noise, N8 has a lower MSE than N6, but both have almost no pixelwise alignment with the true gap (mean Pearson correlations about 0.035 and 0.051).
+3. **Simple interpolation is a strong baseline for smooth images.** Harmonic filling reconstructs the linear gradient almost exactly and performs about as well as N1 on blurred noise.
+4. **The stripes are harder.** N1 and N5 improve on harmonic interpolation, although the quality varies across model seeds.
+
+These observations are descriptive. The main sweep changes model seeds but uses the same target image within each image family, so it does not yet show that the findings generalize across new images.
+
+For spatial correlation, gradient error, prediction variance, and the full interpretation, see the [target-aligned results report](results/comprehensive-target-aligned-report.md).
+
+## Getting started
+
+The GitHub Actions experiments use **Python 3.11**. Install the dependencies from the repository root.
+
+**Windows PowerShell**
+
+```powershell
 python -m venv .venv
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-# macOS/Linux:
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m pytest
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pytest -q
 python experiments/run_smoke_test.py
 ```
 
-Run a short single-model experiment:
+**macOS / Linux**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pytest -q
+python experiments/run_smoke_test.py
+```
+
+The smoke test checks image generation and the baseline fills; it does not train all eight networks.
+
+### Run one network
+
+A quick CPU check:
 
 ```bash
 python experiments/run_experiment.py --image-type gradient --ablation-id 1 --steps 10 --channels 8 --device cpu
 ```
 
-Use `--seed` to set the model initialization and input-noise seed:
+A full-length blurred-noise run on a different target image:
 
 ```bash
-python experiments/run_experiment.py --image-type gradient --ablation-id 6 --steps 2000 --channels 16 --seed 0 --device cpu
+python experiments/run_experiment.py --image-type blurred_noise --blur-scale 4 --ablation-id 1 --channels 16 --steps 2000 --seed 0 --image-seed 2 --device cpu --output-dir outputs/image_seed_2_model_seed_0
 ```
 
-Each run writes metrics, predictions, and model state under its output directory. Keep each configuration and seed in a distinct output directory to avoid overwriting results.
+The runner reads `experiments/config.yaml` by default. Use `--config` for a different config, or override individual settings from the command line. Omitting `--ablation-id` runs all eight networks; omitting `--image-type` runs the configured image families and blur scales. This can take considerably longer than a single run.
 
-## Reproducibility
+**The two seeds have different roles:**
 
-- The runner seeds PyTorch and NumPy before constructing each model. `--seed` controls model initialization and input noise. `--image-seed` changes the synthetic target image independently; the held-out mask uses its configured seed.
-- Keep image, mask, optimizer, learning rate, channel width, and training-step budget fixed when comparing ablations.
-- Use held-out MSE for checkpoint selection only on shared networks. Unshared networks are evaluated at the final step.
-- Experiment workflows are manual-only; launch them deliberately from GitHub Actions after confirming the protocol.
-- Do not apply per-image min-max normalization to blurred-noise samples.
+- `--seed` sets the model initialization and fixed input-noise seed.
+- `--image-seed` changes the generated target image independently.
+- The validation mask has its own seed in `experiments/config.yaml`.
 
-## Running experiments
+The output folder includes the image type, blur scale, ablation ID, and image seed when explicitly supplied. **It does not automatically include the model seed.** Use a separate `--output-dir` for each model seed to avoid overwriting results.
 
-The runner uses `experiments/config.yaml` unless a different config file is passed with `--config`. Command-line options override the channel width, number of steps, image type, and seeds for an individual run.
+### Output files
 
-For blurred noise, `--seed` and `--image-seed` do different things. The first changes the network initialization and fixed input noise. The second generates a new target image. Keeping them separate lets us check whether a result holds across images rather than just across random initializations.
+Each run saves files under its experiment directory:
 
-For example, to run Network 1 on a different blurred-noise image:
-
-```bash
-python experiments/run_experiment.py --image-type blurred_noise --blur-scale 4 --ablation-id 1 --channels 16 --steps 2000 --seed 0 --image-seed 2 --device cpu --output-dir outputs/generalization
-```
-
-A run produces a `metrics.csv` file, prediction arrays (`.npy`), and model checkpoints (`.pt`). The selected prediction is saved as `selected_prediction.npy`. For shared networks this comes from the best held-out checkpoint; for unshared networks it is the final prediction.
-
-The output path includes the image type, blur scale where relevant, image seed when explicitly supplied, and ablation ID. Model seeds are **not** automatically included in the path, so use a separate `--output-dir` for each model seed when running several seeds locally.
-
-## GitHub Actions
-
-The workflows under `.github/workflows/` handle larger runs. Training workflows are started manually from the Actions tab; pushing a code change does not start a sweep. The test workflow runs on pushes and pull requests.
-
-| Workflow | Purpose |
+| File | Contents |
 |---|---|
-| `tests.yml` | Unit tests, data checks, and a short training run |
-| `sweep.yml` | Main ablation sweep for one image family |
-| `collect-results.yml` | Gather sweep artifacts without model checkpoints |
-| `blurred-noise-generalization.yml` | Configurable image-seed and model-seed runs |
-| `blurred-noise-phase2.yml` | Separate image seeds 2 and 3 into parallel jobs |
+| `metrics.csv` | Step-by-step training, held-out, and gap metrics |
+| `selected_prediction.npy` | Prediction used for the reported result |
+| `best_prediction.npy` | Prediction with lowest held-out MSE |
+| `final_prediction.npy` | Prediction at the last step |
+| `prediction_step_*.npy` | Saved prediction snapshots |
+| `best_model_state.pt`, `final_model_state.pt` | PyTorch model states |
 
-The phase-two workflow is set to 2,000 steps, 16 channels, model seed 0, and networks 1, 3, 5, 6, and 8. It covers image seeds 2 and 3; image seed 1 was tested in an earlier run. Each job uploads its metrics, selected prediction, and environment information.
+For unshared networks, `selected_prediction.npy` is the final prediction, not necessarily `best_prediction.npy`.
 
-## Reading the results
+## Running on GitHub Actions
 
-The main sweep covered eight architectures, three image families, and five model seeds. The analysis is in [the target-aligned report](results/comprehensive-target-aligned-report.md). Additional diagnostic notes are in the `results/` directory.
+Expensive training jobs are **manual-only**. Pushing changes runs the tests but does not start a new experiment sweep.
 
-Gap MSE is useful for comparing reconstruction error, but it does not tell the whole story. A prediction can have a reasonable mean and low variance without reproducing the missing pattern. We therefore also compare predictions with the true gap using spatial correlation and inspect the reconstructed images. This matters particularly for locally connected networks, where the gap pixels do not receive a direct training signal.
+| Workflow | Use |
+|---|---|
+| [Tests and smoke check](../../actions/workflows/tests.yml) | Unit tests and short CPU training |
+| [Main sweep](../../actions/workflows/sweep.yml) | Eight networks × five model seeds for one image family |
+| [Collect results](../../actions/workflows/collect-results.yml) | Gather artifacts without large model weights |
+| [Blurred-noise generalization](../../actions/workflows/blurred-noise-generalization.yml) | Choose image seeds, model seeds, and step count |
+| [Phase 2: independent images](../../actions/workflows/blurred-noise-phase2.yml) | Parallel runs for image seeds 2 and 3 |
 
-The harmonic baseline is a useful reference for smooth images. The baseline used in the existing analysis has access to some pixels held out from network training, so those comparisons are not fully matched-information. A follow-up baseline should use only the pixels available during training.
+To launch a manual workflow, open it in the **Actions** tab, select **Run workflow**, check the inputs, and start the run. Download the uploaded artifacts after it finishes.
 
-## Notes for follow-up work
+The phase-two workflow is configured for networks N1, N3, N5, N6, and N8, with 16 channels, 2,000 steps, model seed 0, and image seeds 2 and 3. Image seed 1 was run separately in [Actions run 43706330133](../../actions/runs/43706330133). The existence of the workflow does not by itself mean all its jobs have finished.
 
-- Compare results across independently generated target images, not only model seeds.
-- Check training curves before increasing the step budget. Some networks may still be improving at 2,000 steps.
-- Keep the shared/unshared checkpoint rules consistent across comparisons.
-- Record the workflow run, commit, environment, and seeds alongside each result.
-- Keep exploratory experiments separate from the main sweep so that the original comparisons remain interpretable.
+## Repository structure
 
-See [PROGRESS.md](PROGRESS.md) for the working plan and completed runs.
+```text
+src/                 Models, synthetic images, masks, metrics, training
+baselines/           Constant-grey and harmonic interpolation
+experiments/         Configuration and command-line runners
+tests/               Unit and smoke tests
+.github/workflows/   CI and manually triggered experiments
+results/             Analysis reports and architecture diagnostics
+preliminary_experiments/  Earlier checks and pilot artifacts
+PROGRESS.md          Project log and next steps
+```
+
+## Limitations and next steps
+
+There are several important limits to the current comparison:
+
+- **Independent images:** five model seeds on one target do not replace testing several target images. The image-seed follow-up addresses this.
+- **Baseline information:** the harmonic fill in the existing report uses true pixels outside the gap, including the 5% held out from network training. A matched-information version is still needed for a strictly fair comparison.
+- **Different checkpoint rules:** shared and unshared networks cannot use the same held-out stopping rule under the present architecture.
+- **Metric interpretation:** gap MSE can reward low-variance predictions that do not follow the actual pattern. Correlation, gradient error, and the saved images should be considered together.
+- **Compute and reproducibility:** keep the image, mask, optimizer, width, training budget, code revision, and environment documented for every comparison. CPU runs can be slow, especially for locally connected networks.
+
+The immediate follow-up is to compare independently generated blurred-noise images, inspect convergence, and revisit the harmonic baseline using matched training information. Other possible extensions include different gap sizes, more detailed stripe analysis, and exploratory architecture variants; these are not part of the completed 120-run comparison.
+
+## Further reading
+
+- Ulyanov, Vedaldi, and Lempitsky (2018), *Deep Image Prior*.
+- Heckel and Hand (2019), *Deep Decoder: Concise Image Representations from Untrained Non-convolutional Networks*.
+- Rahaman et al. (2019), *On the Spectral Bias of Neural Networks*.
+
+For project-specific decisions and experiment history, see [PROGRESS.md](PROGRESS.md).
