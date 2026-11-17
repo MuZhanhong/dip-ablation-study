@@ -33,7 +33,9 @@ def test_final_selection_returns_last_step(tmp_path):
     gap = central_gap_mask(size, 8)
     heldout = heldout_mask(gap, fraction=0.1, seed=0)
     torch.manual_seed(1)
-    model = build_model(channels=4, levels=2, filter_size=1, size=size, weight_sharing=False)
+    model = build_model(
+        channels=4, levels=2, filter_size=1, size=size, weight_sharing=False
+    )
     result = train_inpainting(
         image, gap, heldout, model,
         steps=4, log_every=2, seed=1,
