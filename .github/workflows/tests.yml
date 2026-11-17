@@ -1,4 +1,4 @@
-name: Tests and training smoke check
+name: Tests and smoke check
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
         run: python -m pytest -q
       - name: Run data and baseline smoke test
         run: python experiments/run_smoke_test.py
-      - name: Run official training entry point (CPU, 10 steps)
+      - name: Train a small model on CPU
         run: |
           python experiments/run_experiment.py \
             --image-type gradient \
