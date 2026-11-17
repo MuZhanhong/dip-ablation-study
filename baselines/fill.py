@@ -1,4 +1,4 @@
-"""Simple image inpainting baselines."""
+"""Constant and harmonic gap fills."""
 from __future__ import annotations
 
 import numpy as np
@@ -7,7 +7,7 @@ from scipy.sparse.linalg import spsolve
 
 
 def grey_fill(image: np.ndarray, gap_mask: np.ndarray, fill_value: float = 0.5) -> np.ndarray:
-    """Replace missing pixels with a constant grey value."""
+    """Set the missing pixels to a constant."""
     if image.shape != gap_mask.shape:
         raise ValueError("image and gap_mask must have identical shapes")
     result = image.copy()
@@ -16,11 +16,11 @@ def grey_fill(image: np.ndarray, gap_mask: np.ndarray, fill_value: float = 0.5) 
 
 
 def harmonic_fill(image: np.ndarray, gap_mask: np.ndarray) -> np.ndarray:
-    """Fill the gap by solving the four-neighbour discrete Laplace equation."""
+    """Solve the discrete Laplace equation inside the gap."""
     if image.shape != gap_mask.shape or image.ndim != 2:
         raise ValueError("image and 2D gap_mask must have identical shapes")
     coords = np.argwhere(gap_mask)
-    if len(coords) == 0:
+    if not len(coords):
         return image.copy()
     h, w = image.shape
     index = -np.ones((h, w), dtype=int)
