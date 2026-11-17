@@ -1,13 +1,7 @@
-"""DIP-style 17-layer model builder for the architecture ablation study.
+"""Network variants for the DIP ablation study.
 
-The three switches follow the Experiments Week 2 design:
-- upsampling=True: average-pool encoder and bilinear decoder; False removes both
-  pooling and upsampling, keeping every layer at the input resolution.
-- filter_size: use 3x3 or 1x1 filters for the main convolution layers.
-- weight_sharing=True: normal convolutions share filters across spatial positions;
-  False uses locally connected layers with separate filters at each pixel.
-The final 1x1 output layer follows the weight_sharing switch like every other
-layer, so the unshared networks are unshared throughout.
+Unshared variants use locally connected layers, including the output layer.
+Disabling upsampling also removes pooling; all layers then run at full size.
 """
 from __future__ import annotations
 
@@ -20,7 +14,7 @@ from torch.nn import functional as F
 
 
 class LocallyConnected2d(nn.Module):
-    """Same-padded stride-1 convolution with separate weights at every pixel."""
+    """A separate convolution kernel at each spatial position."""
 
     def __init__(self, in_ch: int, out_ch: int, k: int, size: int) -> None:
         super().__init__()
@@ -31,7 +25,7 @@ class LocallyConnected2d(nn.Module):
         fan_in = in_ch * k * k
         self.weight = nn.Parameter(torch.empty(positions, out_ch, fan_in))
         self.bias = nn.Parameter(torch.empty(positions, out_ch))
-        # Match nn.Conv2d's initial distribution so both switch settings start alike.
+        # Use the same initialization range as Conv2d.
         bound = 1 / math.sqrt(fan_in)
         nn.init.uniform_(self.weight, -bound, bound)
         nn.init.uniform_(self.bias, -bound, bound)
@@ -46,7 +40,7 @@ class LocallyConnected2d(nn.Module):
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Configuration for one of the eight architecture ablations."""
+    """Settings for a network variant."""
 
     channels: int = 32
     levels: int = 4
@@ -80,7 +74,7 @@ def build_net(
     size: int = 64,
     up_mode: str = "bilinear",
 ) -> nn.Sequential:
-    """Build all eight networks using the tested Week 2 architecture builder."""
+    """Build a network with the requested ablation settings."""
 
     if k not in (1, 3):
         raise ValueError("k must be 1 or 3")
@@ -121,7 +115,7 @@ def build_net(
 
 
 class DIPHourglass(nn.Module):
-    """Configuration-compatible wrapper around the tested sequential builder."""
+    """Wrap the network with its configuration and input checks."""
 
     def __init__(self, config: ModelConfig | None = None, **kwargs: object) -> None:
         super().__init__()
@@ -164,7 +158,7 @@ def build_model(
     output_channels: int = 1,
     size: int = 64,
 ) -> DIPHourglass:
-    """Build a model from explicit ablation-factor values."""
+    """Construct a model from its architecture settings."""
     return DIPHourglass(
         ModelConfig(
             channels=channels,
@@ -179,7 +173,7 @@ def build_model(
 
 
 def ablation_config(ablation_id: int, *, channels: int = 32, levels: int = 4) -> ModelConfig:
-    """Return the configuration for one of the eight preregistered ablations."""
+    """Look up one of the eight ablation configurations."""
     factors = {
         1: (True, 3, True),
         2: (True, 3, False),
