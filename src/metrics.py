@@ -1,4 +1,4 @@
-"""Small, explicit image reconstruction metrics."""
+"""Reconstruction metrics."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,7 +6,7 @@ from skimage.metrics import structural_similarity
 
 
 def masked_mse(prediction: np.ndarray, target: np.ndarray, mask: np.ndarray) -> float:
-    """Mean squared error over True entries of mask."""
+    """MSE on the pixels selected by mask."""
     if prediction.shape != target.shape or target.shape != mask.shape:
         raise ValueError("prediction, target, and mask must have identical shapes")
     if not np.any(mask):
@@ -15,7 +15,7 @@ def masked_mse(prediction: np.ndarray, target: np.ndarray, mask: np.ndarray) -> 
 
 
 def psnr(prediction: np.ndarray, target: np.ndarray, data_range: float = 1.0) -> float:
-    """PSNR in dB for images with a known data range."""
+    """Peak signal-to-noise ratio in dB."""
     mse = float(np.mean((prediction.astype(np.float64) - target.astype(np.float64)) ** 2))
     if mse == 0:
         return float("inf")
@@ -23,5 +23,5 @@ def psnr(prediction: np.ndarray, target: np.ndarray, data_range: float = 1.0) ->
 
 
 def ssim(prediction: np.ndarray, target: np.ndarray, data_range: float = 1.0) -> float:
-    """Structural similarity for 2D grayscale images."""
+    """SSIM for grayscale images."""
     return float(structural_similarity(target, prediction, data_range=data_range))
