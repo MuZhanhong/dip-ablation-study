@@ -1,4 +1,4 @@
-"""Quick smoke test for the current data/mask/baseline scaffold."""
+"""Check image generation and baseline fills."""
 from pathlib import Path
 import sys
 
@@ -29,7 +29,7 @@ def main() -> None:
         assert not np.any(gap & heldout)
         assert np.isfinite(grey[gap]).all() and np.isfinite(harmonic[gap]).all()
     print(f"Smoke test passed: generated {len(cases)} images and both fill baselines.")
-    print("This does not yet train the eight DIP variants or fully connected baseline.")
+    print("No networks are trained by this check.")
 
 
 if __name__ == "__main__":
