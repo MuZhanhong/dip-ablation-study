@@ -1,6 +1,6 @@
 name: Channel-width pre-run (8 and 16)
 
-# Manual only: experiment runs should not start on every push.
+# Short manual check of Ablation 6 at both widths.
 on:
   workflow_dispatch:
 
