@@ -1,4 +1,4 @@
-"""Training loop for masked DIP image reconstruction."""
+"""Fit a DIP network to the observed pixels."""
 from __future__ import annotations
 
 import csv
@@ -14,7 +14,7 @@ from src.metrics import masked_mse, psnr, ssim
 
 @dataclass
 class TrainingResult:
-    """Best-held-out, final and selected checkpoints, plus per-checkpoint metric history."""
+    """Predictions and metrics saved during training."""
 
     best_prediction: np.ndarray
     best_step: int
@@ -42,16 +42,11 @@ def train_inpainting(
     output_dir: str | Path | None = None,
     selection: str = "heldout",
 ) -> TrainingResult:
-    """Fit model to visible non-held-out pixels and select a checkpoint.
+    """Train on observed pixels; keep the best held-out or final prediction.
 
-    The target image is used for training only where both masks are False.
-    Held-out and gap pixels are excluded from the loss. Gap metrics are
-    reported for analysis but never used to select a checkpoint.
-
-    selection="heldout" picks the checkpoint with the lowest held-out MSE.
-    selection="final" picks the last step. Use "final" for unshared networks:
-    their held-out pixels, like their gap, get no error about their own
-    content, so held-out MSE does not track anything there.
+    Gap pixels are never used for training or checkpoint selection.
+    Unshared networks use the final step because their held-out pixels have
+    no location-specific training signal.
     """
     if selection not in ("heldout", "final"):
         raise ValueError("selection must be 'heldout' or 'final'")
@@ -106,8 +101,7 @@ def train_inpainting(
         if step % log_every != 0 and step != steps:
             continue
 
-        # Stay in train mode, as in the original DIP: eval mode would switch batch
-        # norm to running averages, which differ from the statistics being fitted.
+        # BatchNorm should use the same statistics as during fitting.
         with torch.no_grad():
             pred = model(fixed_noise)[0, 0].detach().cpu().numpy().astype(np.float32)
         gap_mse = masked_mse(pred, target, gap)
