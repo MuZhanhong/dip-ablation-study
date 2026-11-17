@@ -1,7 +1,6 @@
 name: Collect sweep results (no model weights)
 
-# Manual only. Downloads the artifacts of the given sweep runs on GitHub's side,
-# drops the model checkpoints (*.pt), and uploads everything else as one small zip.
+# Gather sweep artifacts without the large model checkpoints.
 on:
   workflow_dispatch:
     inputs:
