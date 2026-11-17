@@ -1,7 +1,6 @@
 name: Phase 2 - independent blurred-noise images
 
-# Complements the successful image_seed=1, model_seed=0, 2000-step smoke test
-# (run 43706330133). No duplicate training of image_seed=1.
+# Image seed 1 was run separately (Actions run 43706330133).
 on:
   workflow_dispatch:
 
