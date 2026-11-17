@@ -1,4 +1,4 @@
-"""Run one or more configured DIP architecture ablations."""
+"""Run the DIP ablation experiments."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import yaml
 
-# Support both "python experiments/run_experiment.py" and module execution.
+# Allow running this file directly from the repository root.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -28,8 +28,8 @@ def main() -> None:
     parser.add_argument("--ablation-id", type=int, choices=range(1, 9))
     parser.add_argument("--steps", type=int, help="Override configured training steps")
     parser.add_argument("--channels", type=int, help="Override configured channel width")
-    parser.add_argument("--seed", type=int, help="Override model initialization and fixed-noise seed; image and masks remain fixed")
-    parser.add_argument("--image-seed", type=int, help="Override synthetic image generation seed independently of model seed")
+    parser.add_argument("--seed", type=int, help="Model initialization and input-noise seed")
+    parser.add_argument("--image-seed", type=int, help="Synthetic image seed (separate from --seed)")
     parser.add_argument("--output-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--device", default=None, help="For example cpu or cuda")
     args = parser.parse_args()
@@ -80,7 +80,7 @@ def main() -> None:
             model_config = ablation_config(
                 ablation_id, channels=channels, levels=int(train_cfg["levels"])
             )
-            # Re-seed initialization for reproducible, comparable runs.
+            # Reset the model seed for each ablation.
             torch.manual_seed(run_seed)
             np.random.seed(run_seed)
             model = DIPHourglass(model_config)
