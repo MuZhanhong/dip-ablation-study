@@ -1,8 +1,6 @@
 name: Main sweep (one image, 8 networks x 5 seeds)
 
-# Manual only. Start once per image: 40 jobs (8 networks x 5 seeds), one run each.
-# Shared networks are scored at the held-out-selected step, unshared at the final step
-# (see experiments/config.yaml).
+# Start one manual run per image. Checkpoint selection is set in config.yaml.
 on:
   workflow_dispatch:
     inputs:
