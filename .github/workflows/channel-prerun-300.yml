@@ -1,6 +1,6 @@
 name: 300-step channel-width pre-run (8 and 16)
 
-# Manual only: experiment runs should not start on every push.
+# Run manually when checking Ablation 6 memory use.
 on:
   workflow_dispatch:
 
