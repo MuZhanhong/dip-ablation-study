@@ -4,7 +4,7 @@ Study how architectural choices in Deep Image Prior (DIP) affect recovery of mis
 
 ## Current status
 
-The repository implements the eight-network ablation matrix, masked training, metrics, prediction snapshots, and tests. The current design follows Design v3. Pilot findings are preliminary; the main ablation sweeps have not yet been completed.
+The repository implements the eight-network ablation matrix, masked training, metrics, prediction snapshots, and tests. The current design follows Design v3. The 120-run main sweep has completed; follow-up image-seed generalization experiments are underway. See `results/comprehensive-target-aligned-report.md` for the analysis.
 
 ## Experiment setup
 
@@ -14,7 +14,7 @@ The repository implements the eight-network ablation matrix, masked training, me
 - Held-out validation: 5% of visible pixels, sampled with seed 0 and never inside the missing square.
 - Model: four-level DIP-style stack, batch normalization and LeakyReLU(0.2), fixed random-noise input scaled by 0.1, no skip connections, no input jitter, Adam at learning rate 0.01.
 - Ablation factors: pooling/upsampling on or off; 3 × 3 vs 1 × 1 main filters; spatially shared vs locally connected internal convolution weights.
-- Channel width and training steps are experiment-level settings and must be fixed consistently for a sweep. Confirm the final values against the current width test and team decision before launching the main sweep.
+- Channel width and training steps are experiment-level settings and must be fixed consistently for a sweep. The main sweep used 16 channels and 2,000 steps.
 - Baselines: grey fill and harmonic fill.
 
 ## Exact switch definitions
@@ -89,7 +89,7 @@ Each run writes metrics, predictions, and model state under its output directory
 
 ## Reproducibility
 
-- The runner seeds PyTorch and NumPy before constructing each model. The `--seed` option overrides model initialization and fixed-noise seed; synthetic image generation and held-out mask remain fixed by the configuration.
+- The runner seeds PyTorch and NumPy before constructing each model. `--seed` controls model initialization and input noise. `--image-seed` changes the synthetic target image independently; the held-out mask uses its configured seed.
 - Keep image, mask, optimizer, learning rate, channel width, and training-step budget fixed when comparing ablations.
 - Use held-out MSE for checkpoint selection only on shared networks. Unshared networks are evaluated at the final step.
 - Experiment workflows are manual-only; launch them deliberately from GitHub Actions after confirming the protocol.
