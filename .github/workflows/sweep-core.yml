@@ -1,0 +1,150 @@
+name: Sweep - core (blurred noise, one blur scale per launch)
+
+# Launch once for each blur scale: 2, 3, 4 and 6.
+# l = 6 is smoother than the built-in scales of networks 1 and 3 (about l = 4.2
+# and 5.0), so their fit to the image is seen from both sides. At l = 6 only the
+# shared networks and baselines run (network 8 is slow and its result does not
+# depend on smoothness).
+# Every network sees the same 8 images and the same 3 model seeds, so all
+# comparisons are paired. 5000 steps: the pilot needed about 5000 to converge.
+on:
+  workflow_dispatch:
+    inputs:
+      blur_scale:
+        description: "Blur scale l"
+        type: choice
+        options: ["2", "3", "4", "6"]
+        default: "4"
+
+permissions:
+  contents: read
+
+env:
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONHASHSEED: "0"
+
+jobs:
+  shared:
+    # Networks 1, 3, 5, 7: cheap (1-2 minutes each on a laptop), so every image and seed.
+    # The tangent kernel (8 lines) is measured every 250 steps, the same steps as the
+    # saved predictions; weights are saved every 500 steps for offline kernels and maps.
+    name: l=${{ inputs.blur_scale }} net ${{ matrix.ablation }} image ${{ matrix.image_seed }} seed ${{ matrix.model_seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        ablation: [1, 3, 5, 7]
+        image_seed: [1, 2, 3, 4, 5, 6, 7, 8]
+        model_seed: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install (CPU-only torch) and record environment
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements.txt
+          mkdir -p metadata
+          python -m pip freeze > metadata/pip-freeze.txt
+          git rev-parse HEAD > metadata/commit.txt
+      - name: Train
+        run: |
+          python experiments/run_experiment.py \
+            --image-type blurred_noise --blur-scale ${{ inputs.blur_scale }} \
+            --image-seed ${{ matrix.image_seed }} --seed ${{ matrix.model_seed }} \
+            --ablation-id ${{ matrix.ablation }} --channels 16 --steps 5000 \
+            --save-prediction-every 250 \
+            --save-weights-at $(seq -s, 0 500 5000) \
+            --measure-kernel-at $(seq -s, 0 250 5000) \
+            --device cpu --output-dir outputs/core/model_seed_${{ matrix.model_seed }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-l${{ inputs.blur_scale }}-net${{ matrix.ablation }}-image${{ matrix.image_seed }}-seed${{ matrix.model_seed }}
+          path: |
+            outputs/
+            metadata/
+          retention-days: 90
+
+  baselines:
+    # Grey and harmonic fills on the same 8 images, using only the pixels the
+    # networks train on (gap and held-out pixels both unknown). Takes seconds.
+    name: l=${{ inputs.blur_scale }} grey and harmonic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install and record environment
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements.txt
+          mkdir -p metadata
+          python -m pip freeze > metadata/pip-freeze.txt
+          git rev-parse HEAD > metadata/commit.txt
+      - name: Fill
+        run: |
+          python experiments/run_baselines.py \
+            --image-type blurred_noise --blur-scale ${{ inputs.blur_scale }} \
+            --image-seeds 1,2,3,4,5,6,7,8 \
+            --output-dir outputs/core/baselines
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-l${{ inputs.blur_scale }}-baselines
+          path: |
+            outputs/
+            metadata/
+          retention-days: 90
+
+  unshared-null:
+    # Network 8: the unshared reference (does "grey plus noise" hold?). One seed per
+    # image is enough for that. About 17 minutes on a laptop. No model files (72 MB
+    # each); the features entering the final layers are saved (0.5 MB) for a probe.
+    if: ${{ inputs.blur_scale != '6' }}
+    name: l=${{ inputs.blur_scale }} net 8 image ${{ matrix.image_seed }} seed ${{ matrix.model_seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        image_seed: [1, 2, 3, 4, 5, 6, 7, 8]
+        model_seed: [0]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install (CPU-only torch) and record environment
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements.txt
+          mkdir -p metadata
+          python -m pip freeze > metadata/pip-freeze.txt
+          git rev-parse HEAD > metadata/commit.txt
+      - name: Train
+        run: |
+          python experiments/run_experiment.py \
+            --image-type blurred_noise --blur-scale ${{ inputs.blur_scale }} \
+            --image-seed ${{ matrix.image_seed }} --seed ${{ matrix.model_seed }} \
+            --ablation-id 8 --channels 16 --steps 5000 \
+            --save-prediction-every 250 --no-model-states --save-features \
+            --device cpu --output-dir outputs/core/model_seed_${{ matrix.model_seed }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-l${{ inputs.blur_scale }}-net8-image${{ matrix.image_seed }}-seed${{ matrix.model_seed }}
+          path: |
+            outputs/
+            metadata/
+          retention-days: 90
