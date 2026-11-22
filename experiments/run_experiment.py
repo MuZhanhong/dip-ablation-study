@@ -16,8 +16,15 @@ if str(ROOT) not in sys.path:
 
 from src.masks import central_gap_mask, heldout_mask
 from src.models import DIPHourglass, ablation_config
-from src.synthetic_data import make_image
+from src.synthetic_data import change_contrast, make_image
 from src.training import train_inpainting
+
+
+def list_of_steps(text: str | None) -> tuple[int, ...]:
+    """Turn "0,500,5000" into (0, 500, 5000); None or "" into ()."""
+    if not text:
+        return ()
+    return tuple(int(part) for part in text.split(","))
 
 
 def main() -> None:
@@ -32,6 +39,20 @@ def main() -> None:
     parser.add_argument("--image-seed", type=int, help="Synthetic image seed (separate from --seed)")
     parser.add_argument("--output-dir", default=str(ROOT / "outputs"))
     parser.add_argument("--device", default=None, help="For example cpu or cuda")
+    # Options added for the November sweep. Defaults leave older runs unchanged.
+    parser.add_argument("--stripe-period", type=float, default=8.0, help="Only used for stripes")
+    parser.add_argument("--contrast", type=float, default=1.0,
+                        help="Scale each pixel's distance from 0.5 by this factor")
+    parser.add_argument("--save-prediction-every", type=int,
+                        help="Save predictions every N steps (default: every logged step)")
+    parser.add_argument("--no-model-states", action="store_true",
+                        help="Do not save best/final model files (use for unshared networks)")
+    parser.add_argument("--save-weights-at", default="",
+                        help="Comma-separated steps at which to save weights, 0 = before training")
+    parser.add_argument("--measure-kernel-at", default="",
+                        help="Comma-separated steps at which to measure the tangent kernel")
+    parser.add_argument("--save-features", action="store_true",
+                        help="Save the features entering the final layers at the end")
     args = parser.parse_args()
 
     with Path(args.config).open("r", encoding="utf-8") as file:
@@ -72,10 +93,17 @@ def main() -> None:
         image = make_image(
             kind, size=size, seed=image_seed,
             blur_scale=1.0 if scale is None else scale,
+            stripe_period=args.stripe_period,
         )
+        if args.contrast != 1.0:
+            image = change_contrast(image, args.contrast)
         spec_name = kind if scale is None else f"{kind}_scale_{scale:g}"
+        if kind == "stripes" and args.stripe_period != 8.0:
+            spec_name = f"{spec_name}_period_{args.stripe_period:g}"
         if args.image_seed is not None:
             spec_name = f"{spec_name}_image_seed_{image_seed}"
+        if args.contrast != 1.0:
+            spec_name = f"{spec_name}_contrast_{args.contrast:g}"
         for ablation_id in ablation_ids:
             model_config = ablation_config(
                 ablation_id, channels=channels, levels=int(train_cfg["levels"])
@@ -99,6 +127,11 @@ def main() -> None:
                 device=args.device,
                 output_dir=run_dir,
                 selection=selection,
+                save_prediction_every=args.save_prediction_every,
+                save_model_states=not args.no_model_states,
+                save_weights_at=list_of_steps(args.save_weights_at),
+                measure_kernel_at=list_of_steps(args.measure_kernel_at),
+                save_features=args.save_features,
             )
             selected = next(r for r in result.history if int(r["step"]) == result.selected_step)
             print(

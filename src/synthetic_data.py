@@ -43,8 +43,22 @@ def stripe_image(
     return (0.5 + 0.5 * np.sin(2.0 * np.pi * phase / period)).astype(np.float32)
 
 
+def change_contrast(image: np.ndarray, factor: float) -> np.ndarray:
+    """Scale every pixel's distance from 0.5 by factor, then clip to [0, 1].
+
+    factor = 1 leaves the image unchanged; factor = 0.5 halves the contrast.
+    """
+    changed = 0.5 + factor * (np.asarray(image, dtype=np.float32) - 0.5)
+    return np.clip(changed, 0.0, 1.0).astype(np.float32)
+
+
 def make_image(
-    kind: str, *, size: int = 64, seed: int = 0, blur_scale: float = 1.0
+    kind: str,
+    *,
+    size: int = 64,
+    seed: int = 0,
+    blur_scale: float = 1.0,
+    stripe_period: float = 8.0,
 ) -> np.ndarray:
     """Create an image by name."""
     if kind == "gradient":
@@ -52,5 +66,5 @@ def make_image(
     if kind == "blurred_noise":
         return blurred_noise_image(size=size, blur_scale=blur_scale, seed=seed)
     if kind == "stripes":
-        return stripe_image(size=size)
+        return stripe_image(size=size, period=stripe_period)
     raise ValueError(f"Unknown image kind: {kind!r}")
