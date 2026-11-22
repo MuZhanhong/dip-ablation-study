@@ -16,7 +16,7 @@ harmonic fill.
 | Width, l = 2 | sweep-extras, width-l2 | 5 at 64 channels | l = 2; image seeds 1-4 | 0, 1, 2 | 12 | 4 (does the width follow l in a wide network?) |
 | Baselines | sweep-core, baselines | grey, harmonic | as core | none | 4 jobs | 7 |
 | Network 2 probe | sweep-extras, network-2 | 2 | l = 4; image seeds 1-4 | 0 | 4 | 8 |
-| Contrast | sweep-extras, contrast | 8 | l = 4, image seed 1, contrast 0.5, 1, 1.5, 2, 3 | 0, 1 | 10 | 9 (s_o^2) |
+| Contrast | sweep-extras, contrast | 8 | l = 4, image seed 1, contrast 0.5, 1, 1.5, 2, 3 | 0, 1 | 10 | 9 (s_0^2) |
 
 Threads: 1 unshared = grey plus noise; 2 sharing AND a route; 3 networks 1 and 3,
 prior does most of the work; 4 network 5 learns its kernel; 5 network 5 against 6;
@@ -183,12 +183,12 @@ these results are in.
 
 - Parked until after the draft: network 6 (unshared twin of 5, about 2 h per run).
 
-## Contrast arm (s_o^2, the unshared gap noise)
+## Contrast arm (s_0^2, the unshared gap noise)
 
 Network 8's gap noise is loud (about 0.011) when visible pixels sit close to 0.5
 and quiet (about 0.002) when they sit far from it, switching between a typical
-distance of 0.12 and 0.16 (10 Nov trials; cause: batch-norm statistics set by
-the visible pixels). Every core image sits at about 0.08, all on the loud side,
+distance of 0.12 and 0.16 (10 Nov trials; likely cause, not tested in the sweep:
+batch-norm statistics set by the visible pixels). Every core image sits at about 0.08, all on the loud side,
 so the arm moves one image across the switch:
 
 | Contrast | 0.5 | 1 | 1.5 | 2 | 3 |
@@ -196,7 +196,7 @@ so the arm moves one image across the switch:
 | Mean distance from 0.5 | 0.040 | 0.079 | 0.119 | 0.158 | 0.226 |
 | Pixels clipped at 0 or 1 | 0 | 0 | 0 | 0.8% | 11.3% |
 
-Without it, network 8's error level (grey + s_o^2) is partly set by our images'
+Without it, network 8's error level (grey + s_0^2) is partly set by our images'
 contrast and has to be reported as a confound.
 
 ## Linear probe (network 2, 4 runs)
