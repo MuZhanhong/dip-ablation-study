@@ -153,6 +153,16 @@ Each run saves files under its experiment directory:
 
 For unshared networks, `selected_prediction.npy` is the final prediction, not necessarily `best_prediction.npy`.
 
+## Staged core study (new protocol)
+
+The next core study is split into four manually started batches, one for each blurred-noise scale: **2, 3, 4, and 6**. Each batch covers eight independent image seeds and three model seeds. The workflow is in [`core-study.yml`](.github/workflows/core-study.yml).
+
+For now, the workflow uses the existing shared networks **N1, N3, N5, and N7**. That gives 4 networks × 8 images × 3 model seeds = **96 runs per scale**, or **384 runs across four scales**. Tom's proposed replacement architecture configurations have not yet been specified in enough detail to implement safely. The workflow therefore represents a runnable staging protocol, **not a confirmed final architecture matrix**.
+
+To start a batch, open [Core study - one blur scale](../../actions/workflows/core-study.yml), choose the scale, check the step count and width, and select **Run workflow**. Run a single batch first and review the outputs before launching the others. Each job processes three model seeds and uploads metrics, selected predictions, the commit SHA, and a dependency snapshot. It deliberately does not upload large model checkpoints.
+
+The previous 120-run sweep remains unchanged. Do not combine its results with the new study without accounting for differences in image seeds, blur scales, and any later architecture changes.
+
 ## Running on GitHub Actions
 
 Expensive training jobs are **manual-only**. Pushing changes runs the tests but does not start a new experiment sweep.
@@ -160,6 +170,7 @@ Expensive training jobs are **manual-only**. Pushing changes runs the tests but 
 | Workflow | Use |
 |---|---|
 | [Tests and smoke check](../../actions/workflows/tests.yml) | Unit tests and short CPU training |
+| [Staged core study](../../actions/workflows/core-study.yml) | One blurred-noise scale per batch; independent image and model seeds |
 | [Main sweep](../../actions/workflows/sweep.yml) | Eight networks × five model seeds for one image family |
 | [Collect results](../../actions/workflows/collect-results.yml) | Gather artifacts without large model weights |
 | [Blurred-noise generalization](../../actions/workflows/blurred-noise-generalization.yml) | Choose image seeds, model seeds, and step count |
